@@ -23,9 +23,9 @@ class: center, middle
 
 <h1>Derivative of a Regular Language</h1>
 
-Andrew Kuhnhausen • `@kuhnhausen`
+Andrew Kuhnhausen • twitter: `@kuhnhausen`
 
-18 November 2017 • Scale by the Bay • Unconference
+March 18th 2018 • NEScala • Unconference
 
 [Parsing with Derivatives](http://matt.might.net/papers/might2011derivatives.pdf) Might/Spiewak
 
@@ -82,8 +82,8 @@ this means that any cfg can be expressed with regular expression and a stack
 
 # Motivation
 
-- Derivatives handle all regular language operations
-- Derivatives handle all context-free languages (including left-recursive)
+- Derivatives handle *all* regular language operations
+- Derivatives handle *all* context-free languages (including left-recursive)
 
 ---
 
@@ -128,9 +128,21 @@ Done.
 - concatenation K ∘ L
 - Kleene star L*
 
+???
+
+So, we are going to implement all of these in the next couple of minutes. We need two things:
+what is the derivative and the nullability test
+
 ---
 
-# Math
+# Tools we need
+
+1. Derivative of operation
+2. Nullability test of operation
+
+---
+
+# Derivative Math
 
 Derivative of a language with respect to character `c`
 - Dc(∅) = ∅
@@ -146,7 +158,7 @@ Derivative of a language with respect to character `c`
 
 ---
 
-# Math
+# Nullability Math
 
 Nullability test 
 - δ(∅) = false
@@ -163,7 +175,24 @@ Nullability test
 
 # Code: Regular Expression
 
-We have a `nullable` check, derive function, as well as this string matcher
+We have a `nullable` check, derive function
+```tut:silent
+sealed trait Regex {
+  def nullable: Boolean
+  def derive(c: Char): Regex
+}
+```
+
+???
+
+We code these tools into this trait
+
+---
+
+# Code: Regular Expression
+
+And for testing, let's add a "matches"
+
 ```tut:silent
 sealed trait Regex {
   def nullable: Boolean
@@ -171,11 +200,12 @@ sealed trait Regex {
   def matches(str: String): Boolean
 }
 ```
+
 ---
 
 # Code: Regular Expression
 
-We can just implement the string matcher
+Which we can implement for `String` using our two tools.
 
 ```tut:silent
 sealed trait Regex {
@@ -190,6 +220,32 @@ sealed trait Regex {
 
 ---
 
+# Our Regex ADT
+
+Implement `nullable` and `derive` for each of these...
+
+```scala
+sealed trait Regex
+// ∅
+case object Empty extends Regex
+// ε
+case object Blank extends Regex
+// c
+case class Single(c: Char) extends Regex
+// Complement: ~L
+case class Complement(base: Regex) extends Regex
+// Concat: A ○ B
+case class Sequence(left: Regex, right: Regex) extends Regex
+// Union: A ∪ B
+case class Choice(left: Regex, right: Regex) extends Regex
+// Kleene*: A*
+case class Repetition(base: Regex) extends Regex
+// Difference: A - B
+case class Difference(x: Regex, y: Regex) extends Regex
+```
+
+---
+
 # Code: Null and Empty Languages
 
 ```tut:silent
@@ -198,63 +254,68 @@ case object Empty extends Regex {
   def derive(c: Char): Regex = ???
 }
 ```
+
+???
+
+How do we implement the regex for Empty?
+
 ---
 
 # Code: Null and Empty Languages
 
-`Dc(∅) = ∅`: The derivative of a character wrt Empty language is the Empty language
 ```tut:silent
 case object Empty extends Regex {
   val nullable = ???
   def derive(c: Char): Regex = Empty
 }
 ```
+`Dc(∅) = ∅`: The derivative of a character wrt Empty language is the Empty language
 
 ---
 
 # Code: Null and Empty Languages
 
-`δ(∅) = false` The Empty language is not nullable
 ```tut:silent
 case object Empty extends Regex {
   val nullable = false
   def derive(c: Char): Regex = Empty
 }
 ```
+`Dc(∅) = ∅`: The derivative of a character wrt Empty language is the Empty language
+
+`δ(∅) = false` The Empty language is not nullable
 
 ---
 
 # Code: Null and Empty Languages
 
-`Dc(ε) = ∅`: the derivative of the Null-string language is the Empty lanaguage
-
-`δ(ε) = true` The Null language is nullable
 ```tut:silent
 case object Blank extends Regex {
   val nullable = ???
   def derive(c: Char): Regex = ???
 }
 ```
+`Dc(ε) = ∅`: the derivative of the Null-string language is the Empty language
+
+`δ(ε) = true`: The Null language is nullable
+
 ---
 
 # Code: Null and Empty Languages
 
-`Dc(ε) = ∅`: the derivative of the Null-string language is the Empty lanaguage
-
-`δ(ε) = true` The Null language is nullable
 ```tut:silent
 case object Blank extends Regex {
   val nullable = true
   def derive(c: Char): Regex = Empty
 }
 ```
+`Dc(ε) = ∅`: the derivative of the Null-string language is the Empty language
+
+`δ(ε) = true`: The Null language is nullable
 ---
 
 # Code: Single character language
 
-`Dc(c) = ε`: the derivative of the character language is the Null-string language
-
-`δ(c) = false`: single character language is not nullable
 
 ```tut:silent
 case class Single(c: Char) extends Regex {
@@ -262,14 +323,14 @@ case class Single(c: Char) extends Regex {
   def derive(c: Char): Regex = ???
 }
 ```
+`Dc(c) = ε`: the derivative of the character language is the Null-string language
+
+`δ(c) = false`: single character language is not nullable
 
 ---
 
 # Code: Single character language
 
-`Dc(c) = ε`: the derivative of the character language is the Null-string language
-
-`δ(c) = false`: single character language is not nullable
 
 ```tut:silent
 case class Single(c: Char) extends Regex {
@@ -277,13 +338,13 @@ case class Single(c: Char) extends Regex {
   def derive(c: Char): Regex = if (c == this.c) Blank else Empty
 }
 ```
+`Dc(c) = ε`: the derivative of the character language is the Null-string language
+
+`δ(c) = false`: single character language is not nullable
 ---
 
 # Code: Complement
 
-`Dc(c') = ∅ if c is not c'`: the derivative of the complement is Empty language if `c` is not `c'`
-
-`δ(c') = ~δ(c')`: complement is nullable if c is not nullable
 
 ```tut:silent
 case class Complement(base: Regex) extends Regex {
@@ -291,13 +352,13 @@ case class Complement(base: Regex) extends Regex {
   def derive(c: Char): Regex = ???
 }
 ```
+`Dc(c') = ∅ if c is not c'`: the derivative of the complement is Empty language if `c` is not `c'`
+
+`δ(c') = ~δ(c')`: complement is nullable if c is not nullable
 ---
 
 # Code: Complement
 
-`Dc(c') = ∅ if c is not c'`: the derivative of the complement is Empty language if `c` is not `c'`
-
-`δ(c') = ~δ(c')`: complement is nullable if c is not nullable
 
 ```tut:silent
 case class Complement(base: Regex) extends Regex {
@@ -305,16 +366,14 @@ case class Complement(base: Regex) extends Regex {
   def derive(c: Char): Regex = Complement(base.derive(c))
 }
 ```
+`Dc(c') = ∅ if c is not c'`: the derivative of the complement is Empty language if `c` is not `c'`
+
+`δ(c') = ~δ(c')`: complement is nullable if c is not nullable
 
 ---
 
 # Code: Sequence/Concat
 
-`Dc(A ○ B) = Dc(A) ○ B if ε not in A`
-
-`Dc(A ○ B) = Dc(A) ○ B ∪ Dc(B) if ε not in A`
-
-`δ(A ○ B) = δ(A) and δ(B)`
 
 ```tut:silent
 case class Sequence(left: Regex, right: Regex) extends Regex {
@@ -322,16 +381,16 @@ case class Sequence(left: Regex, right: Regex) extends Regex {
   def derive(c: Char): Regex = ???
 }
 ```
-
----
-
-# Code: Sequence/Concat
-
 `Dc(A ○ B) = Dc(A) ○ B if ε not in A`
 
 `Dc(A ○ B) = Dc(A) ○ B ∪ Dc(B) if ε not in A`
 
 `δ(A ○ B) = δ(A) and δ(B)`
+
+---
+
+# Code: Sequence/Concat
+
 
 ```tut:silent
 case class Sequence(left: Regex, right: Regex) extends Regex {
@@ -339,6 +398,12 @@ case class Sequence(left: Regex, right: Regex) extends Regex {
   def derive(c: Char): Regex = ???
 }
 ```
+`Dc(A ○ B) = Dc(A) ○ B if ε not in A`
+
+`Dc(A ○ B) = Dc(A) ○ B ∪ Dc(B) if ε not in A`
+
+`δ(A ○ B) = δ(A) and δ(B)`
+
 ???
 We'll need the union type first
 
@@ -346,9 +411,6 @@ We'll need the union type first
 
 # Code: Union/Choice/Or
 
-`Dc(A ∪ B) = Dc(A) ∪ Dc(B)`: the derivative of the union is the union of the derivatives
-
-`δ(A ∪ B) = δ(A) or δ(B)`: nullability of (A or B) is the nullability of A or the nullability of B
 
 ```tut:silent
 case class Choice(left: Regex, right: Regex) extends Regex {
@@ -356,13 +418,14 @@ case class Choice(left: Regex, right: Regex) extends Regex {
   def derive(c: Char): Regex = ???
 }
 ```
+`Dc(A ∪ B) = Dc(A) ∪ Dc(B)`: the derivative of the union is the union of the derivatives
+
+`δ(A ∪ B) = δ(A) or δ(B)`: nullability of (A or B) is the nullability of A or the nullability of B
+
 ---
 
 # Code: Union/Choice/Or
 
-`Dc(A ∪ B) = Dc(A) ∪ Dc(B)`: the derivative of the union is the union of the derivatives
-
-`δ(A ∪ B) = δ(A) or δ(B)`: nullability of (A or B) is the nullability of A or the nullability of B
 
 ```tut:silent
 case class Choice(left: Regex, right: Regex) extends Regex {
@@ -370,15 +433,13 @@ case class Choice(left: Regex, right: Regex) extends Regex {
   def derive(c: Char): Regex = Choice(left.derive(c), right.derive(c))
 }
 ```
+`Dc(A ∪ B) = Dc(A) ∪ Dc(B)`: the derivative of the union is the union of the derivatives
+
+`δ(A ∪ B) = δ(A) or δ(B)`: nullability of (A or B) is the nullability of A or the nullability of B
 ---
 
 # Code: Sequence/Concat
 
-`Dc(A ○ B) = Dc(A) ○ B if ε not in A`
-
-`Dc(A ○ B) = Dc(A) ○ B ∪ Dc(B) if ε not in A`
-
-`δ(A ○ B) = δ(A) and δ(B)`
 
 ```tut:silent
 case class Sequence(left: Regex, right: Regex) extends Regex {
@@ -388,13 +449,15 @@ case class Sequence(left: Regex, right: Regex) extends Regex {
     else Sequence(left.derive(c), right)
 }
 ```
+`Dc(A ○ B) = Dc(A) ○ B if ε not in A`
+
+`Dc(A ○ B) = Dc(A) ○ B ∪ Dc(B) if ε not in A`
+
+`δ(A ○ B) = δ(A) and δ(B)`
 ---
 
 # Code: Repetition/Kleene*
 
-`Dc(A*) = Dc(A)○A*`: the derivative of `A*` is the derivative of `A` concatenated with `A*`
-
-`δ(A*) = ε`: repetition is nullable
 
 ```tut:silent
 case class Repetition(base: Regex) extends Regex {
@@ -402,13 +465,13 @@ case class Repetition(base: Regex) extends Regex {
   def derive(c: Char): Regex = ???
 }
 ```
+`Dc(A*) = Dc(A)○A*`: the derivative of `A*` is the derivative of `A` concatenated with `A*`
+
+`δ(A*) = ε`: repetition is nullable
 ---
 
 # Code: Repetition/Kleene*
 
-`Dc(A*) = Dc(A)○A*`: the derivative of `A*` is the derivative of `A` concatenated with `A*`
-
-`δ(A*) = ε`: repetition is nullable
 
 ```tut:silent
 case class Repetition(base: Regex) extends Regex {
@@ -416,12 +479,12 @@ case class Repetition(base: Regex) extends Regex {
   def derive(c: Char): Regex = Sequence(base.derive(c), base)
 }
 ```
+`Dc(A*) = Dc(A)○A*`: the derivative of `A*` is the derivative of `A` concatenated with `A*`
+
+`δ(A*) = ε`: repetition is nullable
 ---
 
 # Code: Difference
-`Dc(A - B) = Dc(A) - Dc(B)`: the derivative of difference of A and B is the difference of the derivatives of A and B
-
-`δ(A - B) = δ(A) and ~δ(B)`: nullable if A is nullable and B is not nullable
 
 ```tut:silent
 case class Difference(x: Regex, y: Regex) extends Regex {
@@ -429,12 +492,12 @@ case class Difference(x: Regex, y: Regex) extends Regex {
   def derive(c: Char): Regex = ???
 }
 ```
----
-
-# Code: Difference
 `Dc(A - B) = Dc(A) - Dc(B)`: the derivative of difference of A and B is the difference of the derivatives of A and B
 
 `δ(A - B) = δ(A) and ~δ(B)`: nullable if A is nullable and B is not nullable
+---
+
+# Code: Difference
 
 ```tut:silent
 case class Difference(x: Regex, y: Regex) extends Regex {
@@ -442,6 +505,9 @@ case class Difference(x: Regex, y: Regex) extends Regex {
   def derive(c: Char): Regex = Difference(x.derive(c), y.derive(c))
 }
 ```
+`Dc(A - B) = Dc(A) - Dc(B)`: the derivative of difference of A and B is the difference of the derivatives of A and B
+
+`δ(A - B) = δ(A) and ~δ(B)`: nullable if A is nullable and B is not nullable
 ---
 
 # Alright, let's try it!
@@ -586,11 +652,66 @@ and now you can parse context-free grammars
 
 ---
 
+# Feature rich parsing library via derivatives
+
+Parseback (Daniel Spiewak)
+
+https://github.com/djspiewak/parseback
+
+---
+
+# What if...
+
+```scala
+sealed trait Regex
+// ∅
+case object Empty extends Regex
+// ε
+case object Blank extends Regex
+// c
+case class Single(c: Char) extends Regex
+// Complement: ~L
+case class Complement(base: Regex) extends Regex
+// Concat: A ○ B
+case class Sequence(left: Regex, right: Regex) extends Regex
+// Union: A ∪ B
+case class Choice(left: Regex, right: Regex) extends Regex
+// Kleene*: A*
+case class Repetition(base: Regex) extends Regex
+// Difference: A - B
+case class Difference(x: Regex, y: Regex) extends Regex
+```
+---
+
+# Could be expressed with a type parameter?
+
+```scala
+sealed trait Regex[A]
+// ∅
+case object Empty[A] extends Regex[A]
+// ε
+case object Blank[A] extends Regex[A]
+// c
+case class Single[A](c: Char) extends Regex[A]
+// Complement: ~L
+case class Complement[A](base: A) extends Regex[A]
+// Concat: A ○ B
+case class Sequence[A](left: A, right: A) extends Regex[A]
+// Union: A ∪ B
+case class Choice[A](left: A, right: A) extends Regex[A]
+// Kleene*: A*
+case class Repetition[A](base: A) extends Regex[A]
+// Difference: A - B
+case class Difference[A](x: A, y: A) extends Regex[A]
+```
+
+---
+
 class: center, middle
 
 Andrew Kuhnhausen • `@kuhnhausen` • Domino Data Lab
 
-18 November 2017 • Scale by the Bay
+March 18th 2018 • NEScala • Unconference
 
 https://github.com/trane/dxre
 
