@@ -1,0 +1,746 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Derivative of a Regular Language</title>
+    <meta charset="utf-8">
+    <style>
+      @import url(https://fonts.googleapis.com/css?family=Yanone+Kaffeesatz);
+      @import url(https://fonts.googleapis.com/css?family=Droid+Serif:400,700,400italic);
+      @import url(https://fonts.googleapis.com/css?family=Ubuntu+Mono:400,700,400italic);
+
+      body { font-family: 'Droid Serif', 'Helvetica'; }
+      h1, h2, h3 {
+        font-family: 'Yanone Kaffeesatz', 'Gill Sans';
+        font-weight: normal;
+      }
+      .remark-code, .remark-inline-code { font-family: 'Ubuntu Mono', 'Consolas', 'Courier New'; }
+    </style>
+  </head>
+  <body>
+    <textarea id="source">
+
+class: center, middle
+
+<h1>Derivative of a Regular Language</h1>
+
+Andrew Kuhnhausen • twitter: `@kuhnhausen`
+
+March 18th 2018 • NEScala • Unconference
+
+[Parsing with Derivatives](http://matt.might.net/papers/might2011derivatives.pdf) Might/Spiewak
+
+---
+
+# Regular Language: wikipedia definition
+
+The collection of regular languages over an alphabet Σ is defined recursively as follows:
+
+- The empty language Ø, and the empty string language {ε} are regular languages.
+- For each a ∈ Σ (a belongs to Σ), the singleton language {a} is a regular language.
+- If A and B are regular languages, then A ∪ B (union), A • B (concatenation), and A* (Kleene star) are regular languages.
+- No other languages over Σ are regular.
+
+---
+
+# Regular Language: practitioners definition
+
+any language that is accepted by a regular expression
+
+---
+
+# Context-free Language
+
+a regular language + recursion
+
+???
+
+this means that any cfg can be expressed with regular expression and a stack
+
+---
+
+# Regular Language Operations
+
+- union K ∪ L
+- intersection K ∩ L
+- complement ~L
+- difference K-L
+- concatenation K ∘ L
+- Kleene star L*
+
+---
+
+# What do most regex libraries give us?
+
+- union K ∪ L
+- ~~intersection K ∩ L~~
+- ~~complement ~L~~
+- ~~difference K-L~~
+- concatenation K ∘ L
+- Kleene star L*
+
+---
+
+# Motivation
+
+- Derivatives handle *all* regular language operations
+- Derivatives handle *all* context-free languages (including left-recursive)
+
+---
+
+# Brzozowski's derivative algorithm
+
+The derivative of a language L with respect to a character c, written Dc(L):
+
+1. Filter: Find all of the strings in L that start with c.
+1. Chop: the c off all those strings.
+
+If the final language contains the "null-string", then the character is in original language.
+
+---
+
+# Brzozowski's derivative algorithm
+
+Example: 
+
+```
+Dm(monad|monoid|arrow)* = (onad|onoid)(monad|monoid|arrow)*
+```
+
+---
+
+# Brzozowski's derivative algorithm on Strings
+
+Compute the derivative of the first character, then the second, then the third, etc
+
+If the result language contains the "null-string", then the original string is in the language
+
+Done.
+
+---
+
+# Math
+
+- empty language Ø, and the empty string language {ε} are regular languages.
+- union K ∪ L
+- intersection K ∩ L
+- complement ~L
+- difference K-L
+- concatenation K ∘ L
+- Kleene star L*
+
+???
+
+So, we are going to implement all of these in the next couple of minutes. We need two things:
+what is the derivative and the nullability test
+
+---
+
+# Tools we need
+
+1. Derivative of operation
+2. Nullability test of operation
+
+---
+
+# Derivative Math
+
+Derivative of a language with respect to character `c`
+- Dc(∅) = ∅
+- Dc(ε) = ∅
+- Dc(c) = ε
+- Dc(c') = ∅ if c is not c'
+- Dc(A ○ B) = Dc(A) ○ B if A does not contain the empty string
+- Dc(A ○ B) = Dc(A) ○ B ∪ Dc(B) if A contains the empty string
+- Dc(A ∪ B) = Dc(A) ∪ Dc(B)
+- Dc(A ∩ B) = Dc(A) ∩ Dc(B)
+- Dc(A - B) = Dc(A) - Dc(B)
+- Dc(A*) = Dc(A)○A*
+
+---
+
+# Nullability Math
+
+Nullability test 
+- δ(∅) = false
+- δ(ε) = true
+- δ(c) = false
+- ~δ(c) = ~δ(c) 
+- δ(A ○ B) = δ(A) and δ(B)
+- δ(A ∪ B) = δ(A) or δ(B)
+- δ(A ∩ B) = δ(A) and δ(B)
+- δ(A - B) = δ(A) and ~δ(B)
+- δ(A*) = ε
+
+---
+
+# Code: Regular Expression
+
+We have a `nullable` check, derive function
+```scala
+sealed trait Regex {
+  def nullable: Boolean
+  def derive(c: Char): Regex
+}
+```
+
+???
+
+We code these tools into this trait
+
+---
+
+# Code: Regular Expression
+
+And for testing, let's add a "matches"
+
+```scala
+sealed trait Regex {
+  def nullable: Boolean
+  def derive(c: Char): Regex
+  def matches(str: String): Boolean
+}
+```
+
+---
+
+# Code: Regular Expression
+
+Which we can implement for `String` using our two tools.
+
+```scala
+sealed trait Regex {
+  def nullable: Boolean
+  def derive(c: Char): Regex
+  def matches(str: String): Boolean = str.length match {
+    case 0 => nullable
+    case n => derive(str.head).matches(str.tail)
+  }
+}
+```
+
+---
+
+# Our Regex ADT
+
+Implement `nullable` and `derive` for each of these...
+
+```scala
+sealed trait Regex
+// ∅
+case object Empty extends Regex
+// ε
+case object Blank extends Regex
+// c
+case class Single(c: Char) extends Regex
+// Complement: ~L
+case class Complement(base: Regex) extends Regex
+// Concat: A ○ B
+case class Sequence(left: Regex, right: Regex) extends Regex
+// Union: A ∪ B
+case class Choice(left: Regex, right: Regex) extends Regex
+// Kleene*: A*
+case class Repetition(base: Regex) extends Regex
+// Difference: A - B
+case class Difference(x: Regex, y: Regex) extends Regex
+```
+
+---
+
+# Code: Null and Empty Languages
+
+```scala
+case object Empty extends Regex {
+  val nullable = ???
+  def derive(c: Char): Regex = ???
+}
+```
+
+???
+
+How do we implement the regex for Empty?
+
+---
+
+# Code: Null and Empty Languages
+
+```scala
+case object Empty extends Regex {
+  val nullable = ???
+  def derive(c: Char): Regex = Empty
+}
+```
+`Dc(∅) = ∅`: The derivative of a character wrt Empty language is the Empty language
+
+---
+
+# Code: Null and Empty Languages
+
+```scala
+case object Empty extends Regex {
+  val nullable = false
+  def derive(c: Char): Regex = Empty
+}
+```
+`Dc(∅) = ∅`: The derivative of a character wrt Empty language is the Empty language
+
+`δ(∅) = false` The Empty language is not nullable
+
+---
+
+# Code: Null and Empty Languages
+
+```scala
+case object Blank extends Regex {
+  val nullable = ???
+  def derive(c: Char): Regex = ???
+}
+```
+`Dc(ε) = ∅`: the derivative of the Null-string language is the Empty language
+
+`δ(ε) = true`: The Null language is nullable
+
+---
+
+# Code: Null and Empty Languages
+
+```scala
+case object Blank extends Regex {
+  val nullable = true
+  def derive(c: Char): Regex = Empty
+}
+```
+`Dc(ε) = ∅`: the derivative of the Null-string language is the Empty language
+
+`δ(ε) = true`: The Null language is nullable
+---
+
+# Code: Single character language
+
+
+```scala
+case class Single(c: Char) extends Regex {
+  val nullable = ???
+  def derive(c: Char): Regex = ???
+}
+```
+`Dc(c) = ε`: the derivative of the character language is the Null-string language
+
+`δ(c) = false`: single character language is not nullable
+
+---
+
+# Code: Single character language
+
+
+```scala
+case class Single(c: Char) extends Regex {
+  val nullable = false
+  def derive(c: Char): Regex = if (c == this.c) Blank else Empty
+}
+```
+`Dc(c) = ε`: the derivative of the character language is the Null-string language
+
+`δ(c) = false`: single character language is not nullable
+---
+
+# Code: Complement
+
+
+```scala
+case class Complement(base: Regex) extends Regex {
+  lazy val nullable = ???
+  def derive(c: Char): Regex = ???
+}
+```
+`Dc(c') = ∅ if c is not c'`: the derivative of the complement is Empty language if `c` is not `c'`
+
+`δ(c') = ~δ(c')`: complement is nullable if c is not nullable
+---
+
+# Code: Complement
+
+
+```scala
+case class Complement(base: Regex) extends Regex {
+  lazy val nullable = !base.nullable
+  def derive(c: Char): Regex = Complement(base.derive(c))
+}
+```
+`Dc(c') = ∅ if c is not c'`: the derivative of the complement is Empty language if `c` is not `c'`
+
+`δ(c') = ~δ(c')`: complement is nullable if c is not nullable
+
+---
+
+# Code: Sequence/Concat
+
+
+```scala
+case class Sequence(left: Regex, right: Regex) extends Regex {
+  lazy val nullable = ???
+  def derive(c: Char): Regex = ???
+}
+```
+`Dc(A ○ B) = Dc(A) ○ B if ε not in A`
+
+`Dc(A ○ B) = Dc(A) ○ B ∪ Dc(B) if ε not in A`
+
+`δ(A ○ B) = δ(A) and δ(B)`
+
+---
+
+# Code: Sequence/Concat
+
+
+```scala
+case class Sequence(left: Regex, right: Regex) extends Regex {
+  lazy val nullable = left.nullable && right.nullable
+  def derive(c: Char): Regex = ???
+}
+```
+`Dc(A ○ B) = Dc(A) ○ B if ε not in A`
+
+`Dc(A ○ B) = Dc(A) ○ B ∪ Dc(B) if ε not in A`
+
+`δ(A ○ B) = δ(A) and δ(B)`
+
+???
+We'll need the union type first
+
+---
+
+# Code: Union/Choice/Or
+
+
+```scala
+case class Choice(left: Regex, right: Regex) extends Regex {
+  lazy val nullable = ???
+  def derive(c: Char): Regex = ???
+}
+```
+`Dc(A ∪ B) = Dc(A) ∪ Dc(B)`: the derivative of the union is the union of the derivatives
+
+`δ(A ∪ B) = δ(A) or δ(B)`: nullability of (A or B) is the nullability of A or the nullability of B
+
+---
+
+# Code: Union/Choice/Or
+
+
+```scala
+case class Choice(left: Regex, right: Regex) extends Regex {
+  lazy val nullable = left.nullable || right.nullable
+  def derive(c: Char): Regex = Choice(left.derive(c), right.derive(c))
+}
+```
+`Dc(A ∪ B) = Dc(A) ∪ Dc(B)`: the derivative of the union is the union of the derivatives
+
+`δ(A ∪ B) = δ(A) or δ(B)`: nullability of (A or B) is the nullability of A or the nullability of B
+---
+
+# Code: Sequence/Concat
+
+
+```scala
+case class Sequence(left: Regex, right: Regex) extends Regex {
+  lazy val nullable = left.nullable && right.nullable
+  def derive(c: Char): Regex =
+    if (left.nullable) Choice(Sequence(left.derive(c), right), right.derive(c))
+    else Sequence(left.derive(c), right)
+}
+```
+`Dc(A ○ B) = Dc(A) ○ B if ε not in A`
+
+`Dc(A ○ B) = Dc(A) ○ B ∪ Dc(B) if ε not in A`
+
+`δ(A ○ B) = δ(A) and δ(B)`
+---
+
+# Code: Repetition/Kleene*
+
+
+```scala
+case class Repetition(base: Regex) extends Regex {
+  val nullable = ???
+  def derive(c: Char): Regex = ???
+}
+```
+`Dc(A*) = Dc(A)○A*`: the derivative of `A*` is the derivative of `A` concatenated with `A*`
+
+`δ(A*) = ε`: repetition is nullable
+---
+
+# Code: Repetition/Kleene*
+
+
+```scala
+case class Repetition(base: Regex) extends Regex {
+  val nullable = true
+  def derive(c: Char): Regex = Sequence(base.derive(c), base)
+}
+```
+`Dc(A*) = Dc(A)○A*`: the derivative of `A*` is the derivative of `A` concatenated with `A*`
+
+`δ(A*) = ε`: repetition is nullable
+---
+
+# Code: Difference
+
+```scala
+case class Difference(x: Regex, y: Regex) extends Regex {
+  lazy val nullable = ???
+  def derive(c: Char): Regex = ???
+}
+```
+`Dc(A - B) = Dc(A) - Dc(B)`: the derivative of difference of A and B is the difference of the derivatives of A and B
+
+`δ(A - B) = δ(A) and ~δ(B)`: nullable if A is nullable and B is not nullable
+---
+
+# Code: Difference
+
+```scala
+case class Difference(x: Regex, y: Regex) extends Regex {
+  lazy val nullable = x.nullable && !y.nullable
+  def derive(c: Char): Regex = Difference(x.derive(c), y.derive(c))
+}
+```
+`Dc(A - B) = Dc(A) - Dc(B)`: the derivative of difference of A and B is the difference of the derivatives of A and B
+
+`δ(A - B) = δ(A) and ~δ(B)`: nullable if A is nullable and B is not nullable
+---
+
+# Alright, let's try it!
+
+```scala
+scala> val single = Single('s')
+single: Single = Single(s)
+
+scala> single.matches("s")
+res0: Boolean = true
+
+scala> single.matches("x")
+res1: Boolean = false
+```
+---
+
+# Alright, let's try it!
+
+```scala
+scala> val seq = Sequence(Single('s'), Single('c'))
+seq: Sequence = Sequence(Single(s),Single(c))
+
+scala> seq.matches("sc")
+res2: Boolean = true
+```
+---
+
+# Alright, let's try it!
+
+```scala
+scala> val comp = Complement(single)
+comp: Complement = Complement(Single(s))
+
+scala> comp.matches("s")
+res3: Boolean = false
+
+scala> comp.matches("b")
+res4: Boolean = true
+
+scala> Complement(comp).matches("b")
+res5: Boolean = false
+```
+
+---
+
+# Alright, let's try it!
+
+```scala
+scala> Difference(Single('s'), Single('s')).matches("s")
+res6: Boolean = false
+
+scala> Difference(Single('s'), Single('s')).matches("s")
+res7: Boolean = false
+```
+---
+
+# Next-level
+## Generate parse forests for *any* CFG
+
+1. Apply to parser combinators
+1. Apply to Context-Free Grammars to create small-step parsers
+---
+
+# Caveats
+
+The nullability check is potentially non-terminating
+
+---
+
+# Caveats
+
+The nullability check is potentially non-terminating
+
+The balanced parens grammar:
+`L = L ( L ) ∪ ε`
+
+---
+
+# Caveats
+
+The nullability check is potentially non-terminating
+
+The balanced parens grammar:
+`L = L ( L ) ∪ ε`
+
+The derivative is infinitely recursive:
+`[D( L] = [D( L] ( L ) ∪ [L )]`
+
+---
+
+# Laziness, memoizing, and fixed points
+
+If we compute nullability *lazily*, then the derivative terminates...
+
+---
+
+# Laziness, memoizing, and fixed points
+
+If we compute nullability *lazily*, then the derivative terminates...
+
+but, because the grammar is left-recursive, computing the derivative *forces* the computation when checking nullability...
+
+---
+
+# Laziness, memoizing, and fixed points
+
+If we compute nullability *lazily*, then the derivative terminates...
+
+but, because the grammar is left-recursive, computing the derivative *forces* the computation when checking nullability...
+
+we can fix that by memoizing the derivative...
+
+---
+
+# Laziness, memoizing, and fixed points
+
+If we compute nullability *lazily*, then the derivative terminates...
+
+but, because the grammar is left-recursive, computing the derivative *forces* the computation when checking nullability...
+
+we can fix that by memoizing the derivative...
+
+but, the nullability check is structurally recursive (memoizing and laziness can't help)...
+
+---
+
+# Laziness, memoizing, and fixed points
+
+If we compute nullability *lazily*, then the derivative terminates...
+
+but, because the grammar is left-recursive, computing the derivative *forces* the computation when checking nullability...
+
+we can fix that by memoizing the derivative...
+
+but, the nullability check is structurally recursive (memoizing and laziness can't help)...
+
+... all hope is lost ...
+
+---
+
+# Laziness, memoizing, and fixed points
+
+If we compute nullability *lazily*, then the derivative terminates...
+
+but, because the grammar is left-recursive, computing the derivative *forces* the computation when checking nullability...
+
+we can fix that by memoizing the derivative...
+
+but, the nullability check is structurally recursive (memoizing and laziness can't help)...
+
+~~... all hope is lost ...~~
+
+nullability can be substituted with computing the least-fixed-point!
+
+---
+
+class: center, middle
+
+and now you can parse context-free grammars
+
+---
+
+# Feature rich parsing library via derivatives
+
+Parseback (Daniel Spiewak)
+
+https://github.com/djspiewak/parseback
+
+---
+
+# What if...
+
+```scala
+sealed trait Regex
+// ∅
+case object Empty extends Regex
+// ε
+case object Blank extends Regex
+// c
+case class Single(c: Char) extends Regex
+// Complement: ~L
+case class Complement(base: Regex) extends Regex
+// Concat: A ○ B
+case class Sequence(left: Regex, right: Regex) extends Regex
+// Union: A ∪ B
+case class Choice(left: Regex, right: Regex) extends Regex
+// Kleene*: A*
+case class Repetition(base: Regex) extends Regex
+// Difference: A - B
+case class Difference(x: Regex, y: Regex) extends Regex
+```
+---
+
+# Could be expressed with a type parameter?
+
+```scala
+sealed trait Regex[A]
+// ∅
+case object Empty[A] extends Regex[A]
+// ε
+case object Blank[A] extends Regex[A]
+// c
+case class Single[A](c: Char) extends Regex[A]
+// Complement: ~L
+case class Complement[A](base: A) extends Regex[A]
+// Concat: A ○ B
+case class Sequence[A](left: A, right: A) extends Regex[A]
+// Union: A ∪ B
+case class Choice[A](left: A, right: A) extends Regex[A]
+// Kleene*: A*
+case class Repetition[A](base: A) extends Regex[A]
+// Difference: A - B
+case class Difference[A](x: A, y: A) extends Regex[A]
+```
+
+---
+
+class: center, middle
+
+Andrew Kuhnhausen • `@kuhnhausen` • Domino Data Lab
+
+March 18th 2018 • NEScala • Unconference
+
+https://github.com/trane/dxre
+
+---
+
+
+ </textarea>
+    <script src="remark-latest.min.js">
+    </script>
+    <script>
+      var slideshow = remark.create();
+    </script>
+  </body>
+</html>
